@@ -6,8 +6,8 @@ MSG_ID_FILE="discord_message_id.txt"
 LIST_FILE="current_players.tmp"
 MAP_FILE="windrose_id_map.tmp"
 
-BOT_NAME="Skye Serve Monitor"
-BOT_LOGO="https://raw.githubusercontent.com/parkervcp/pterodactyl-images/master/logos/windrose.png"
+BOT_NAME="Skye Serve Windrose Monitor"
+BOT_LOGO="https://raw.githubusercontent.com/skye-serve/windrose/refs/heads/main/resized.png"
 
 # --- GHOST KILLER ---
 for pid in $(pgrep -f windrose_tracker.sh); do
