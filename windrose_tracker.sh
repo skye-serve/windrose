@@ -56,7 +56,7 @@ EOF
 }
 
 # 🚨 This tells Linux: "If you receive a Kill signal or Exit, run 'send_offline' instantly!"
-trap send_offline SIGTERM SIGINT EXIT
+trap send_offline SIGTERM SIGINT
 # ========================================================
 
 
