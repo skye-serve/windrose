@@ -9,8 +9,8 @@ MAP_FILE="windrose_id_map.tmp"
 FLAG_FILE="shutdown.flag"
 
 # --- BRANDING ---
-BOT_NAME="${BOT_NAME:-Skye Serve Monitor}"
-BOT_LOGO="${BOT_LOGO:-https://raw.githubusercontent.com/parkervcp/pterodactyl-images/master/logos/windrose.png}"
+BOT_NAME="Skye Serve Monitor"
+BOT_LOGO="https://raw.githubusercontent.com/parkervcp/pterodactyl-images/master/logos/windrose.png"
 
 # --- GHOST KILLER ---
 for pid in $(pgrep -f tracker.sh); do
