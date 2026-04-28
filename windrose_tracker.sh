@@ -1,36 +1,68 @@
 #!/bin/bash
 
 # --- CONFIGURATION ---
-# Replace with the actual path to your Windrose log file if different
 LOG_FILE="R5/Saved/Logs/R5.log"
 MSG_ID_FILE="discord_message_id.txt"
 LIST_FILE="current_players.tmp"
 MAP_FILE="windrose_id_map.tmp"
-FLAG_FILE="shutdown.flag"
 
-# --- BRANDING ---
 BOT_NAME="Skye Serve Monitor"
 BOT_LOGO="https://raw.githubusercontent.com/parkervcp/pterodactyl-images/master/logos/windrose.png"
 
 # --- GHOST KILLER ---
-for pid in $(pgrep -f tracker.sh); do
+for pid in $(pgrep -f windrose_tracker.sh); do
     if [ "$pid" != "$$" ] && [ "$pid" != "$PPID" ]; then
         kill -9 "$pid" 2>/dev/null
     fi
 done
 
-# 1. CLEAN RESET (Retains Discord Message ID to update the same message!)
+# CLEAN RESET
 rm -f "payload.json"
-rm -f "$FLAG_FILE"
 > "$LIST_FILE" 
 touch "$MAP_FILE"
 
 echo "--- Stable Windrose Tracker Started: $(date) ---" > tracker_debug.log
 
-# Windrose specific ID mapping!
+# ========================================================
+# --- SHUTDOWN INTERCEPTOR (The Fix) ---
+# ========================================================
+send_offline() {
+    echo "[SHUTDOWN] Kill signal received! Updating Discord..." >> tracker_debug.log
+    CUR_TIME=$(date +'%T')
+    CLEAN_SNAME=$(echo "${SERVER_NAME:-Windrose Server}" | tr -d '"' | tr -dc '[:print:]')
+    
+    cat <<EOF > payload.json
+{
+  "username": "$BOT_NAME",
+  "avatar_url": "$BOT_LOGO",
+  "embeds": [{
+    "title": "🎮 Windrose Live Server Status",
+    "color": 15548997, 
+    "fields": [
+      {"name": "Server Name", "value": "$CLEAN_SNAME", "inline": false},
+      {"name": "Status", "value": "🔴 Offline / Restarting", "inline": true},
+      {"name": "Current Players", "value": "0", "inline": true},
+      {"name": "Online Players", "value": "\`\`\`\nServer is currently offline\n\`\`\`", "inline": false}
+    ],
+    "footer": {"text": "Last Updated: $CUR_TIME | Skye Serve"}
+  }]
+}
+EOF
+    if [ -s "$MSG_ID_FILE" ]; then
+        MESSAGE_ID=$(cat "$MSG_ID_FILE")
+        curl -s -o /dev/null -X PATCH -H "Content-Type: application/json" -d @payload.json "${DISCORD_WEBHOOK}/messages/${MESSAGE_ID}"
+    fi
+    exit 0
+}
+
+# 🚨 This tells Linux: "If you receive a Kill signal or Exit, run 'send_offline' instantly!"
+trap send_offline SIGTERM SIGINT EXIT
+# ========================================================
+
+
+# Windrose specific ID mapping
 update_mapping() {
     local raw_line="$1"
-    # Catches: ServerAccount. AccountName 'John Windrose'. AccountId AEEEA5204C...
     if [[ "$raw_line" == *"ServerAccount."*"AccountName"* ]]; then
         local t_name=$(echo "$raw_line" | sed -n "s/.*AccountName '\([^']*\)'.*/\1/p")
         local t_id=$(echo "$raw_line" | sed -n "s/.*AccountId \([A-F0-9]*\)\..*/\1/p")
@@ -48,18 +80,9 @@ while read -r line; do update_mapping "$line"; done < "$LOG_FILE"
 
 # --- Background Listener ---
 tail -F -n 0 "$LOG_FILE" 2>/dev/null | while read -r line; do
-    
-    # Trigger #1: UE5 Shutdown Catchers (Triggered by ^C / SIGINT)
-    if [[ "$line" == *"Engine exit requested"* ]] || [[ "$line" == *"LogExit: Exiting"* ]] || [[ "$line" == *"PreExit Game"* ]]; then
-        echo "[SHUTDOWN] Exit sequence detected! Flagging for Discord update..." >> tracker_debug.log
-        touch "$FLAG_FILE"
-        pkill -P $$ sleep 2>/dev/null
-    fi
-
     update_mapping "$line"
 
-    # Trigger #2: Player Joins
-    # Catches: LogNet: Join succeeded: John Windrose
+    # Trigger: Player Joins
     if [[ "$line" == *"Join succeeded:"* ]]; then
         NAME=$(echo "$line" | sed 's/.*Join succeeded: //' | tr -d '\r\n' | tr -d '"' | tr -d "'" | xargs)
         if [ -n "$NAME" ] && ! grep -qx "$NAME" "$LIST_FILE"; then
@@ -67,8 +90,7 @@ tail -F -n 0 "$LOG_FILE" 2>/dev/null | while read -r line; do
         fi
     fi
 
-    # Trigger #3: Player Leaves
-    # Catches: Account was disconnected. AccountId E04D7E864221...
+    # Trigger: Player Leaves
     if [[ "$line" == *"Account was disconnected. AccountId"* ]]; then
         LEAVE_ID=$(echo "$line" | sed -n 's/.*AccountId \([A-F0-9]*\)\..*/\1/p')
         if [ -n "$LEAVE_ID" ]; then
@@ -83,44 +105,11 @@ tail -F -n 0 "$LOG_FILE" 2>/dev/null | while read -r line; do
         fi
     fi
 done &
-TAIL_PID=$!
 
 # --- Main Discord Loop ---
 while true; do
     CUR_TIME=$(date +'%T')
     CLEAN_SNAME=$(echo "${SERVER_NAME:-Windrose Server}" | tr -d '"' | tr -dc '[:print:]')
-
-    # === SHUTDOWN TRIGGER ===
-    if [ -f "$FLAG_FILE" ]; then
-        
-        # Update Discord to RED immediately
-        cat <<EOF > payload.json
-{
-  "username": "$BOT_NAME",
-  "avatar_url": "$BOT_LOGO",
-  "embeds": [{
-    "title": "🎮 Windrose Live Server Status",
-    "color": 15548997, 
-    "fields": [
-      {"name": "Server Name", "value": "$CLEAN_SNAME", "inline": false},
-      {"name": "Status", "value": "🔴 Offline / Restarting", "inline": true},
-      {"name": "Current Players", "value": "0", "inline": true},
-      {"name": "Online Players", "value": "\`\`\`\nServer is currently offline\n\`\`\`", "inline": false}
-    ],
-    "footer": {"text": "Last Updated: $CUR_TIME | Skye Serve"}
-  }]
-}
-EOF
-        if [ -s "$MSG_ID_FILE" ]; then
-            MESSAGE_ID=$(cat "$MSG_ID_FILE")
-            curl -s -o /dev/null -X PATCH -H "Content-Type: application/json" -d @payload.json "${DISCORD_WEBHOOK}/messages/${MESSAGE_ID}"
-        fi
-        
-        echo "Discord updated. Handing off shutdown to Pterodactyl..." >> tracker_debug.log
-        rm -f "$FLAG_FILE"
-        exit 0
-    fi
-    # === END SHUTDOWN TRIGGER ===
 
     # NORMAL ONLINE LOOP
     PLAYERS=$(grep -c "[^[:space:]]" "$LIST_FILE" | awk '{print $1}')
@@ -143,7 +132,7 @@ EOF
       {"name": "Server Name", "value": "$CLEAN_SNAME", "inline": false},
       {"name": "Status", "value": "🟢 Online", "inline": true},
       {"name": "Current Players", "value": "$PLAYERS", "inline": true},
-      {"name": "Online Players", "value": "\`\`\`\\n$FINAL_LIST\\n\`\`\`", "inline": false}
+      {"name": "Online Players", "value": "\`\`\`\n$FINAL_LIST\n\`\`\`", "inline": false}
     ],
     "footer": {"text": "Last Updated: $CUR_TIME | Skye Serve"}
   }]
