@@ -149,5 +149,7 @@ EOF
         [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ] && rm -f "$MSG_ID_FILE"
     fi
 
-    sleep 5
+    # Run sleep in the background and wait. This allows the 'trap' to instantly interrupt it!
+    sleep 5 &
+    wait $!
 done
