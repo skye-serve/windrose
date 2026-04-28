@@ -146,7 +146,11 @@ EOF
     else
         MESSAGE_ID=$(cat "$MSG_ID_FILE")
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH -H "Content-Type: application/json" -d @payload.json "${DISCORD_WEBHOOK}/messages/${MESSAGE_ID}")
-        [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ] && rm -f "$MSG_ID_FILE"
+        
+        # Only delete the message ID if Discord explicitly says the message no longer exists (404)
+        if [ "$HTTP_CODE" == "404" ]; then 
+            rm -f "$MSG_ID_FILE"
+        fi
     fi
 
     # Run sleep in the background and wait. This allows the 'trap' to instantly interrupt it!
